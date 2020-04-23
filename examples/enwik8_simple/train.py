@@ -53,7 +53,8 @@ model = ReformerLM(
 )
 
 model = TrainingWrapper(model)
-model.cuda()
+# model.cuda()
+
 
 # prepare enwik8 data
 
@@ -71,7 +72,8 @@ class TextSamplerDataset(Dataset):
     def __getitem__(self, index):
         rand_start = torch.randint(0, self.data.size(0) - self.seq_len - 1, (1,))
         full_seq = self.data[rand_start: rand_start + self.seq_len + 1].long()
-        return full_seq.cuda()
+        # return full_seq.cuda()
+        return full_seq
 
     def __len__(self):
         return self.data.size(0) // self.seq_len
@@ -114,3 +116,6 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval=10., desc='training'):
         sample = model.generate(inp, GENERATE_LENGTH)
         output_str = decode_tokens(sample)
         print(output_str)
+
+if __name__ == "__main__":
+    pass
