@@ -831,6 +831,6 @@ class ReformerLM(nn.Module):
         x = x + self.pos_emb(x).type(x.type())
 
         x = self.to_model_dim(x)
-        _kwargs = kwargs
+        # _kwargs = kwargs
         x = self.reformer(x, **kwargs)
         return self.out(x)

@@ -7,3 +7,10 @@ Weight Tying : Sharing the weight matrix between input-to-embedding layer and ou
 
 f_embed: |T| x dim(Embed) 
 g_decode: { dim(Embed) or dim_last_layer } x |T|
+
+### num_mem_kv 
+Currently set to `0`
+https://arxiv.org/pdf/1907.01470.pdf
+"More precisely, we augment the self-attention layers
+with persistent memory vectors that play a similar role as the feed-forward layer."
+https://github.com/lucidrains/reformer-pytorch/issues/54
