@@ -14,3 +14,9 @@ https://arxiv.org/pdf/1907.01470.pdf
 "More precisely, we augment the self-attention layers
 with persistent memory vectors that play a similar role as the feed-forward layer."
 https://github.com/lucidrains/reformer-pytorch/issues/54
+
+### RevNet
+#### Reversible Transformer
+##### Y1 = X1 + Attention(X2)
+        # class Reformer(nn.Module)'s def forward():
+        x = torch.cat([x, x], dim = -1)

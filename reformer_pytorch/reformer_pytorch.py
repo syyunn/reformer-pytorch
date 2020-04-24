@@ -765,7 +765,7 @@ class Reformer(nn.Module):
         self.full_attn_thres = full_attn_thres
 
         get_attn = lambda: LSHSelfAttention(dim, heads, bucket_size, n_hashes, causal = causal, dropout = lsh_dropout, post_attn_dropout = post_attn_dropout, attn_chunks = attn_chunks, allow_duplicate_attention = lsh_allow_duplicate_attention, attend_across_buckets = lsh_attend_across_buckets, random_rotations_per_head = random_rotations_per_head, num_mem_kv = num_mem_kv, use_full_attn = use_full_attn, full_attn_thres = full_attn_thres, one_value_head = one_value_head, n_local_attn_heads = n_local_attn_heads)
-        get_ff = lambda: FeedForward(dim, dropout = ff_dropout, activation = ff_activation, mult = ff_mult, glu = ff_glu)
+        x = lambda: FeedForward(dim, dropout = ff_dropout, activation = ff_activation, mult = ff_mult, glu = ff_glu)
 
         if weight_tie:
             get_attn = cache_fn(get_attn)
@@ -792,7 +792,8 @@ class Reformer(nn.Module):
         self.layers = ReversibleSequence(nn.ModuleList(blocks), layer_dropout = layer_dropout, reverse_thres = reverse_thres, send_signal = True)
 
     def forward(self, x, **kwargs):
-        x = torch.cat([x, x], dim = -1)
+        x = torch.cat([x, x], dim = -1) # later we will chunking againg
+        # x1, x2 = torch.chunk(x, 2, dim=2)
         arg_route = (True, self.twin_attention)
         x = self.layers(x, arg_route = arg_route, **kwargs)
         return torch.stack(x.chunk(2, dim=-1)).mean(dim=0)
