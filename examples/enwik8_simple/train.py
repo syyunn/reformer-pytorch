@@ -22,7 +22,6 @@ GENERATE_LENGTH = 512
 SEQ_LEN = 4096
 
 # helpers
-
 def cycle(loader):
     while True:
         for data in loader:
@@ -35,7 +34,6 @@ def decode_tokens(tokens):
     return ''.join(list(map(decode_token, tokens)))
 
 # instantiate model
-
 model = ReformerLM(
     dim = 512,
     depth = 6,
@@ -63,6 +61,7 @@ with gzip.open('./data/enwik8.gz') as file:
     trX, vaX = np.split(X, [int(90e6)])
     data_train, data_val = torch.from_numpy(trX), torch.from_numpy(vaX)
 
+
 class TextSamplerDataset(Dataset):
     def __init__(self, data, seq_len):
         super().__init__()
@@ -77,6 +76,7 @@ class TextSamplerDataset(Dataset):
 
     def __len__(self):
         return self.data.size(0) // self.seq_len
+
 
 train_dataset = TextSamplerDataset(data_train, SEQ_LEN)
 val_dataset   = TextSamplerDataset(data_val, SEQ_LEN)
@@ -93,12 +93,12 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval=10., desc='training'):
     model.train()
 
     for __ in range(GRADIENT_ACCUMULATE_EVERY):
-        loss = model(next(train_loader), return_loss = True)
-        loss.backward()
+        loss = model(next(train_loader), return_loss=True)
+        loss.backward() # calculate gradient
 
     print(f'training loss: {loss.item()}')
     torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-    optim.step()
+    optim.step() # apply gradient W
     optim.zero_grad()
 
     if i % VALIDATE_EVERY == 0:
@@ -117,5 +117,5 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval=10., desc='training'):
         output_str = decode_tokens(sample)
         print(output_str)
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # to run inside-of-IDE
     pass

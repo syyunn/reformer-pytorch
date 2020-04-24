@@ -133,6 +133,7 @@ class _ReversibleFunction(Function):
             y, dy = block.backward_pass(y, dy, **kwargs)
         return dy, None, None
 
+
 class ReversibleSequence(nn.Module):
     def __init__(self, blocks, layer_dropout = 0., reverse_thres = 0, send_signal = False):
         super().__init__()

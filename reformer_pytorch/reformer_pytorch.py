@@ -92,6 +92,7 @@ def expand_dim(dim, k, t):
 def merge_dims(ind_from, ind_to, tensor):
     shape = list(tensor.shape)
     arr_slice = slice(ind_from, ind_to + 1)
+    shape_arr_slice = shape[arr_slice]
     shape[arr_slice] = [reduce(mul, shape[arr_slice])]
     return tensor.reshape(*shape)
 
@@ -99,10 +100,11 @@ def split_at_index(dim, index, t):
     pre_slices = (slice(None),) * dim
     l = (*pre_slices, slice(None, index))
     r = (*pre_slices, slice(index, None))
+    t_l_slice = t[l]
+    t_r_slice = t[r]
     return t[l], t[r]
 
 # helper classes
-
 class MatrixMultiply(nn.Module):
     def __init__(self, tensor, transpose = False, normalize = False):
         super().__init__()
@@ -217,7 +219,8 @@ class LSHAttention(nn.Module):
             batch_size if self._random_rotations_per_head else 1,
             vecs.shape[-1],
             self.n_hashes if self._rehash_each_round else 1,
-            rot_size // 2)
+            rot_size // 2
+        )
 
         random_rotations = torch.randn(rotations_shape, dtype=vecs.dtype, device=device).expand(batch_size, -1, -1, -1)
 
@@ -231,6 +234,7 @@ class LSHAttention(nn.Module):
             # bucket numbers from different hashing rounds don't overlap.
             offsets = torch.arange(self.n_hashes, device=device)
             offsets = torch.reshape(offsets * n_buckets, (1, -1, 1))
+            buckets_add_offsets = buckets + offsets
             buckets = torch.reshape(buckets + offsets, (batch_size, -1,))
         else:
             rotated_vecs = torch.cat([rotated_vecs, -rotated_vecs], dim=-1)
@@ -265,7 +269,12 @@ class LSHAttention(nn.Module):
 
         total_hashes = self.n_hashes
 
+        before_unsqueeze = torch.arange(total_hashes * seqlen, device=device)
+        after_unsqueeze = torch.arange(total_hashes * seqlen, device=device).unsqueeze(0)
+
         ticker = torch.arange(total_hashes * seqlen, device=device).unsqueeze(0).expand_as(buckets)
+        remainder = ticker % seqlen
+
         buckets_and_t = seqlen * buckets + (ticker % seqlen)
         buckets_and_t = buckets_and_t.detach()
 
@@ -691,6 +700,8 @@ class AbsolutePositionalEmbedding(nn.Module):
         self.emb.weight.data.uniform_(-0.01, 0.01)
 
     def forward(self, x):
+        x_shape = x.shape
+        x_shape_1 = x.shape[1]
         t = torch.arange(x.shape[1], device=x.device)
         return self.emb(t)
 
@@ -793,7 +804,7 @@ class ReformerLM(nn.Module):
         self.max_seq_len = max_seq_len
 
         self.token_emb = nn.Embedding(num_tokens, emb_dim)
-        self.token_emb.weight.data.uniform_(-0.01, 0.01)
+        self.token_emb.weight.data.uniform_(-0.01, 0.01) # assume entropy around 1.35
 
         self.to_model_dim = Identity() if emb_dim == dim else nn.Linear(emb_dim, dim)
 
@@ -802,7 +813,7 @@ class ReformerLM(nn.Module):
         elif fixed_position_emb:
             self.pos_emb = FixedPositionalEmbedding(emb_dim)
         else:
-            self.pos_emb = AbsolutePositionalEmbedding(emb_dim, max_seq_len)
+            self.pos_emb = AbsolutePositionalEmbedding(emb_dim, max_seq_len) # default
 
         self.reformer = Reformer(dim, depth, max_seq_len, heads = heads, bucket_size = bucket_size, n_hashes = n_hashes, ff_chunks = ff_chunks, attn_chunks = attn_chunks, causal = causal, weight_tie = weight_tie, lsh_dropout = lsh_dropout, ff_mult = ff_mult, ff_activation = ff_activation, ff_glu = ff_glu, ff_dropout = ff_dropout, post_attn_dropout = 0., layer_dropout = layer_dropout, random_rotations_per_head = random_rotations_per_head, twin_attention = twin_attention, use_scale_norm = use_scale_norm, use_rezero = use_rezero, use_full_attn = use_full_attn, full_attn_thres = full_attn_thres, reverse_thres = reverse_thres, num_mem_kv = num_mem_kv, one_value_head = one_value_head, n_local_attn_heads = n_local_attn_heads)
 
@@ -820,5 +831,6 @@ class ReformerLM(nn.Module):
         x = x + self.pos_emb(x).type(x.type())
 
         x = self.to_model_dim(x)
+        _kwargs = kwargs
         x = self.reformer(x, **kwargs)
         return self.out(x)

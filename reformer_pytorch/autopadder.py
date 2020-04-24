@@ -5,6 +5,7 @@ import torch.nn.functional as F
 
 from reformer_pytorch.reformer_pytorch import Reformer, ReformerLM, LSHSelfAttention
 
+
 def pad_to_multiple(tensor, seqlen, multiple, dim=-1):
     m = seqlen / multiple
     if m.is_integer():
@@ -44,6 +45,8 @@ class Autopadder(nn.Module):
 
             if input_mask is not None:
                 new_mask = F.pad(input_mask, (0, x.shape[1] - input_mask.shape[1]), value=False)
+                new_mask_example = new_mask[0, :]
+                false_in_new_mask = False in new_mask_example
                 kwargs.update(input_mask=new_mask)
 
             if input_attn_mask is not None:
