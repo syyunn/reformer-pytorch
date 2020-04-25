@@ -20,3 +20,12 @@ https://github.com/lucidrains/reformer-pytorch/issues/54
 ##### Y1 = X1 + Attention(X2)
         # class Reformer(nn.Module)'s def forward():
         x = torch.cat([x, x], dim = -1)
+
+## [Scale norm](https://arxiv.org/pdf/1910.05895.pdf)
+Introduce learnable parameter g, 1-dimensional, which represent the radius of hypersphere of scaled activation.
+
+## [ReZero](https://arxiv.org/pdf/2003.04887.pdf)
+Initially the gradients for all parameters defining F
+vanish, but dynamically evolve to suitable values during initial stages of training.
+
+## [WeightTieEmbedding](Using the Output Embedding to Improve Language Models)
