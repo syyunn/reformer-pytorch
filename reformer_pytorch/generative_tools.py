@@ -90,6 +90,6 @@ class TrainingWrapper(nn.Module):
             xo = pad(list(map(lambda t: t[1:], x)))
 
         out = self.net(xi, **kwargs)
-
+        out_transpose = out.transpose(1, 2)
         loss = F.cross_entropy(out.transpose(1, 2), xo, ignore_index = self.ignore_index)
         return loss

@@ -14,6 +14,7 @@ class Deterministic(nn.Module):
         self.gpu_states = None
 
     def record_rng(self, *args):
+        # rng refers to "random number generator". To reproduce the random initialization as same as the recorded.
         self.cpu_state = torch.get_rng_state()
         if torch.cuda._initialized:
             self.cuda_in_fwd = True
@@ -23,7 +24,7 @@ class Deterministic(nn.Module):
         if record_rng:
             self.record_rng(*args)
 
-        if not set_rng:
+        if not set_rng:  # we are here
             return self.net(*args, **kwargs)
 
         rng_devices = []
@@ -41,17 +42,18 @@ class Deterministic(nn.Module):
 class ReversibleBlock(nn.Module):
     def __init__(self, f, g, depth=None, send_signal = False):
         super().__init__()
-        self.f = Deterministic(f)
-        self.g = Deterministic(g)
+        self.f = Deterministic(f)  # Deterministic layer is to record rng_state
+        self.g = Deterministic(g)  # Deterministic layer is to record rng_state
 
         self.depth = depth
-        self.send_signal = send_signal
+        self.send_signal = send_signal  # default is true
 
     def forward(self, x, f_args = {}, g_args = {}):
         x1, x2 = torch.chunk(x, 2, dim=2)
         y1, y2 = None, None
 
         if self.send_signal:
+            # send signal to show which state we are in reverse? or forward?
             f_args['_reverse'] = g_args['_reverse'] = False
             f_args['_depth'] = g_args['_depth'] = self.depth
 
@@ -117,7 +119,7 @@ class IrreversibleBlock(nn.Module):
 
 class _ReversibleFunction(Function):
     @staticmethod
-    def forward(ctx, x, blocks, kwargs):
+    def forward(ctx, x, blocks, kwargs):  # ctx refers to context object
         ctx.kwargs = kwargs
         for block in blocks:
             x = block(x, **kwargs)
@@ -132,6 +134,7 @@ class _ReversibleFunction(Function):
         for block in ctx.blocks[::-1]:
             y, dy = block.backward_pass(y, dy, **kwargs)
         return dy, None, None
+
 
 class ReversibleSequence(nn.Module):
     def __init__(self, blocks, layer_dropout = 0., reverse_thres = 0, send_signal = False):
