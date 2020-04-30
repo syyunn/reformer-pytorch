@@ -106,11 +106,12 @@ def look_around(x, backward=1, forward=0, pad_value=-1, dim=2):
     return torch.cat(tensors, dim=dim)
 
 
-def expand_dim(dim, k, t):
-    t = t.unsqueeze(dim)
-    expand_shape = [-1] * len(t.shape)
-    expand_shape[dim] = k
-    return t.expand(*expand_shape)
+def expand_dim(dim, k, t):  # dim=1, lsh_h=4, mask.shape = 4, 4096
+    t = t.unsqueeze(dim)  # add dimension at dim1: 4,4096 ->  4, 1 4096
+    expand_shape = [-1] * len(t.shape)  # [-1, -1, -1]
+    expand_shape[dim] = k  # [-1, k=lsh_h=4, -1]
+    return t.expand(*expand_shape)  # -1 doesn't change when expand. https://pytorch.org/docs/stable/tensors.html
+    # expand is nothing more than just a memory_pointer copy
 
 
 def merge_dims(ind_from, ind_to, tensor):
@@ -122,12 +123,12 @@ def merge_dims(ind_from, ind_to, tensor):
 
 
 def split_at_index(dim, index, t):
-    pre_slices = (slice(None),) * dim
+    pre_slices = (slice(None),) * dim  # how many slices
     l = (*pre_slices, slice(None, index))
     r = (*pre_slices, slice(index, None))
     t_l_slice = t[l]
     t_r_slice = t[r]
-    return t[l], t[r]
+    return t[l], t[r]  # split tensor to left/right at index
 
 
 # helper classes
@@ -168,15 +169,23 @@ class ScaleNorm(nn.Module):
         return x / n * self.g
 
 
+# scalenorm = ScaleNorm() ## instantiate
+# scalenorm.g <- reuse it! @ another layer
+
+
 class PreNorm(nn.Module):
+    """
+
+    """
+
     def __init__(self, norm_class, dim, fn):
         super().__init__()
         self.norm = norm_class(dim)
-        self.fn = fn
+        self.fn = fn  # attn
 
     def forward(self, x, **kwargs):
         x = self.norm(x)
-        return self.fn(x, **kwargs)
+        return self.fn(x, **kwargs)  # attn(scaledNorm(x))
 
 
 class Chunk(nn.Module):
@@ -743,29 +752,42 @@ class LSHSelfAttention(nn.Module):
         **kwargs,
     ):
         device, dtype = x.device, x.dtype
-        b, t, e, h, m, l_h = (
+        b, t, e, h, m, l_h = (  # b : batch size # t: token nums, e.g. 4096
             *x.shape,
-            self.heads,
-            self.num_mem_kv,
-            self.n_local_attn_heads,
+            self.heads,  # this is for memory_kv : refer to: https://arxiv.org/pdf/1907.01470.pdf
+            self.num_mem_kv,  # memory_key_values
+            self.n_local_attn_heads,  # this is used for local attention
         )
+        # b: batch size
+        # t: num tokens (sequences)
+        # e: model dim
 
         mem_kv = default(self.mem_kv, torch.empty(b, 0, e, dtype=dtype, device=device))
         mem = mem_kv.expand(b, m, e)
 
         keys = default(keys, torch.empty(b, 0, e, dtype=dtype, device=device))
-        c = keys.shape[1]
+        c = keys.shape[1]  # 0 when not using memory_key_values
 
-        kv_len = t + m + c
-        use_full_attn = self.use_full_attn or kv_len <= self.full_attn_thres
+        kv_len = (
+            t + m + c
+        )  # currently memory key/values are zero. disregard m,c in case memory vectors are None.
+        use_full_attn = (
+            self.use_full_attn or kv_len <= self.full_attn_thres
+        )  # currently 0
 
-        x = torch.cat((x, mem, keys), dim=1)
-        qk = self.toqk(x)
+        x = torch.cat(
+            (x, mem, keys), dim=1
+        )  # size are not change. we don't use memory key values.
+        qk = self.toqk(
+            x
+        )  # Linear to model dim (the terms model dim means q/k dim in transformer)
         v = self.tov(x)
         v = v.repeat(1, 1, self.v_head_repeats)
 
         def merge_heads(v):
-            return v.view(b, kv_len, h, -1).transpose(1, 2)
+            return v.view(b, kv_len, h, -1).transpose(
+                1, 2
+            )  # h is local atten heads transpose swithc num_tokens and head dimension
 
         def split_heads(v):
             return v.view(b, h, t, -1).transpose(1, 2).contiguous()
@@ -782,23 +804,31 @@ class LSHSelfAttention(nn.Module):
         lqk, qk, lv, v = map(merge_batch_and_heads, (lqk, qk, lv, v))
 
         masks = {}
-        if input_mask is not None or context_mask is not None:
+        if (
+            input_mask is not None or context_mask is not None
+        ):  # input_mask is not None as default
             default_mask = torch.tensor([True], device=device)
-            i_mask = default(input_mask, default_mask.expand(b, t))
-            m_mask = default_mask.expand(b, m)
-            c_mask = default(context_mask, default_mask.expand(b, c))
+            i_mask = default(input_mask, default_mask.expand(b, t))  # 4, 4096
+            m_mask = default_mask.expand(
+                b, m
+            )  # m is about memory vectors. we are not using it as default
+            c_mask = default(
+                context_mask, default_mask.expand(b, c)
+            )  # c is about memory vectors - keyvals. we are not using it as default
             mask = torch.cat((i_mask, m_mask, c_mask), dim=1)
             mask = merge_batch_and_heads(expand_dim(1, lsh_h, mask))
-            masks["input_mask"] = mask
+            masks["input_mask"] = mask # 16, 4096
 
-        if input_attn_mask is not None:
+        if input_attn_mask is not None:  # input_attn_mask is None as deafult
             input_attn_mask = merge_batch_and_heads(
                 expand_dim(1, lsh_h, input_attn_mask)
             )
             masks["input_attn_mask"] = input_attn_mask
 
         attn_fn = self.lsh_attn if not use_full_attn else self.full_attn
-        partial_attn_fn = partial(attn_fn, query_len=t, **kwargs)
+        partial_attn_fn = partial(
+            attn_fn, query_len=t, **kwargs
+        )  # this is where masks are getting in
         attn_fn_in_chunks = process_inputs_chunk(
             partial_attn_fn, chunks=self.attn_chunks
         )
@@ -1017,14 +1047,14 @@ class Reformer(nn.Module):
             if not twin_attention and ff_chunks > 1:
                 g = Chunk(ff_chunks, g, along_dim=-2)
 
-            blocks.append(nn.ModuleList([f, g]))
+            blocks.append(nn.ModuleList([f, g]))  # still it's a list
 
         self.layers = ReversibleSequence(
             nn.ModuleList(blocks),
             layer_dropout=layer_dropout,
             reverse_thres=reverse_thres,
             send_signal=True,
-        )
+        )  # here by the _ReversibleFunction.apply inside of ReversibleSequence, backward_pass become actually working
 
     def forward(self, x, **kwargs):
         x = torch.cat([x, x], dim=-1)  # later we will chunking againg
